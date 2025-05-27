@@ -5,7 +5,7 @@ import json
 TOKEN = "7844345303:AAGyDzl4oJjm646ePdx0YQP32ARuhWL6qHk"
 URL = f"https://api.telegram.org/bot{TOKEN}/"
 IRST_OFFSET = timedelta(hours=3, minutes=30)
-PROFILE_PHOTO_CACHE = {}  # کش برای عکس‌های پروفایل
+PROFILE_PHOTO_CACHE = {}
 
 def escape_markdown(text):
     escape_chars = '_*[]()~`>#+-=|{}.!'
@@ -17,12 +17,15 @@ def get_irst_time(timestamp):
     return irst_time.strftime("%H:%M")
 
 def get_user_profile_photo(user_id):
+    logger.info("Fetching profile photo for user_id: %s", user_id)
     if user_id in PROFILE_PHOTO_CACHE:
+        logger.info("Returning cached photo: %s", PROFILE_PHOTO_CACHE[user_id])
         return PROFILE_PHOTO_CACHE[user_id]
     
     url = URL + "getUserProfilePhotos"
     params = {"user_id": user_id, "limit": 1}
     resp = requests.get(url, params=params).json()
+    logger.info("getUserProfilePhotos response: %s", resp)
     if resp.get("ok") and resp["result"]["total_count"] > 0:
         photo = resp["result"]["photos"][0][0]["file_id"]
         PROFILE_PHOTO_CACHE[user_id] = photo
@@ -38,7 +41,11 @@ def answer_inline_query(inline_query_id, results):
         "cache_time": 0,
         "is_personal": True
     }
-    requests.post(url, data=data)
+    response = requests.post(url, data=data)
+    logger.info("answerInlineQuery response: %s", response.json())
+    if not response.json().get("ok"):
+        logger.error("Failed to answer inline query: %s", response.json())
+    return response
 
 def answer_callback_query(callback_query_id, text, show_alert=False):
     url = URL + "answerCallbackQuery"
@@ -47,7 +54,11 @@ def answer_callback_query(callback_query_id, text, show_alert=False):
         "text": text,
         "show_alert": show_alert
     }
-    requests.post(url, data=data)
+    response = requests.post(url, data=data)
+    logger.info("answerCallbackQuery response: %s", response.json())
+    if not response.json().get("ok"):
+        logger.error("Failed to answer callback query: %s", response.json())
+    return response
 
 def edit_message_text(chat_id=None, message_id=None, inline_message_id=None, text=None, reply_markup=None):
     url = URL + "editMessageText"
