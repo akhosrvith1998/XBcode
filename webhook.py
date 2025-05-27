@@ -9,6 +9,10 @@ app = Flask(__name__)
 TOKEN = "7844345303:AAGyDzl4oJjm646ePdx0YQP32ARuhWL6qHk"
 URL = f"https://api.telegram.org/bot{TOKEN}/"
 
+@app.route("/")
+def home():
+    return "ربات نجوا - امن در حال اجراست!"
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
@@ -24,7 +28,7 @@ def webhook():
         return Response(status=500)
 
 if __name__ == "__main__":
-    webhook_url = os.getenv("WEBHOOK_URL", "https://your-render-app.onrender.com/webhook")
+    webhook_url = os.getenv("WEBHOOK_URL", "https://xbcode-render-app.onrender.com/webhook")
     response = requests.get(f"{URL}setWebhook?url={webhook_url}")
     logger.info("Webhook set: %s", response.text)
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
