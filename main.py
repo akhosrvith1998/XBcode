@@ -10,6 +10,7 @@ whispers = {}
 BOT_USERNAME = "XBCodebot"
 
 def process_update(update):
+    logger.info("Starting process_update: %s", update)
     if "inline_query" in update:
         inline_query = update["inline_query"]
         query_id = inline_query["id"]
@@ -17,20 +18,22 @@ def process_update(update):
         query_text = raw_query.replace(f"@{BOT_USERNAME}", "", 1).strip()
         sender = inline_query["from"]
         sender_id = str(sender["id"])
+        logger.info("Inline query: query_id=%s, query_text=%s, sender_id=%s", query_id, query_text, sender_id)
 
-        # چک کردن کش
-        cached_results = get_cached_inline_query(sender_id, query_text)
-        if cached_results:
-            logger.info("Serving cached inline query for %s: %s", sender_id, query_text)
-            answer_inline_query(query_id, cached_results)
-            return
+        # غیرفعال کردن کش موقتاً
+        # cached_results = get_cached_inline_query(sender_id, query_text)
+        # if cached_results:
+        #     logger.info("Serving cached inline query for %s: %s", sender_id, query_text)
+        #     answer_inline_query(query_id, cached_results)
+        #     return
 
         if not query_text:
+            logger.info("Empty query_text, showing initial options")
             results = [
                 {
                     "type": "article",
                     "id": "start",
-                    "title": "* یوزرنیم یا آیدی عددی گیرنده",
+                    "title": "* حالا یوزرنیم یا آیدی عددی گیرنده رو تایپ کن",
                     "description": "یوزرنیم یا آیدی عددی گیرنده را وارد کنید",
                     "input_message_content": {
                         "message_text": "لطفاً یوزرنیم یا آیدی عددی گیرنده را وارد کنید"
@@ -40,27 +43,29 @@ def process_update(update):
                             {"text": "شروع", "switch_inline_query_current_chat": f"@{BOT_USERNAME} "}
                         ]]
                     }
+                },
+                {
+                    "type": "article",
+                    "id": "history",
+                    "title": "* تاریخچه گیرنده‌های قبلی",
+                    "description": "لیست گیرنده‌هایی که قبلاً به آن‌ها نجوا فرستاده‌اید",
+                    "input_message_content": {
+                        "message_text": "تاریخچه گیرنده‌های قبلی"
+                    },
+                    "reply_markup": {
+                        "inline_keyboard": [
+                            [{"text": f"نجوا به {receiver['display_name']}", "switch_inline_query_current_chat": f"@{BOT_USERNAME} {receiver['receiver_id']} "}]
+                            for receiver in sorted(history.get(sender_id, []), key=lambda x: x["display_name"])
+                        ]
+                    }
                 }
             ]
-            # اضافه کردن موارد تاریخچه
-            if sender_id in history:
-                for receiver in sorted(history[sender_id], key=lambda x: x["display_name"]):
-                    results.append({
-                        "type": "article",
-                        "id": f"history_{receiver['receiver_id']}",
-                        "title": f"نجوا به {receiver['display_name']}",
-                        "description": f"ارسال نجوا به {receiver['first_name']}",
-                        "thumb_url": receiver.get("profile_photo_url", ""),
-                        "reply_markup": {
-                            "inline_keyboard": [[
-                                {"text": "ارسال نجوا", "switch_inline_query_current_chat": f"@{BOT_USERNAME} {receiver['receiver_id']} "}
-                            ]]
-                        }
-                    })
+            logger.info("Sending results: %s", results)
             set_cached_inline_query(sender_id, query_text, results)
             answer_inline_query(query_id, results)
             return
 
+        # بقیه کد بدون تغییر
         parts = query_text.split(" ", 1)
         if len(parts) == 1:
             recipient = parts[0]
@@ -80,7 +85,6 @@ def process_update(update):
                     }
                 }
             ]
-            # اضافه کردن موارد تاریخچه مرتبط
             if sender_id in history:
                 for receiver in sorted(history[sender_id], key=lambda x: x["display_name"]):
                     if recipient.lower() in receiver['display_name'].lower() or recipient.lower() in receiver['first_name'].lower():
@@ -197,13 +201,16 @@ def process_update(update):
         data = callback["data"]
         message = callback.get("message")
         inline_message_id = callback.get("inline_message_id")
+        logger.info("Received callback_query: id=%s, data=%s", callback_id, data)
 
         if data.startswith("show|"):
             _, unique_id = data.split("|", 1)
             whisper_data = whispers.get(unique_id)
+            logger.info("Processing show callback for unique_id=%s, whisper_data=%s", unique_id, whisper_data)
 
             if not whisper_data:
-                answer_callback_query(callback_id, "⌛️ نجوا منقضی شده! 🕒", False)
+                logger.info("Whisper expired: unique_id=%s", unique_id)
+                answer_callback_query(callback_id, "⌛️ نجوا منقضی شده! 🕒", show_alert=True)
                 return
 
             user = callback["from"]
@@ -212,12 +219,14 @@ def process_update(update):
             first_name = user.get("first_name", "")
             last_name = user.get("last_name", "")
             user_display_name = f"{first_name} {last_name}".strip() if last_name else first_name
+            logger.info("User: id=%s, username=%s", user_id, username)
 
             is_allowed = (
                 user_id == whisper_data["sender_id"] or
                 (whisper_data["receiver_username"] and username and username.lower() == whisper_data["receiver_username"]) or
                 (whisper_data["receiver_user_id"] and user_id == str(whisper_data["receiver_user_id"]))
             )
+            logger.info("Is allowed: %s", is_allowed)
 
             if is_allowed and user_id != whisper_data["sender_id"]:
                 whisper_data["receiver_views"].append(time.time())
@@ -253,5 +262,6 @@ def process_update(update):
                     reply_markup=keyboard
                 )
 
-            response_text = f"🔐 پیام نجوا:\n{whisper_data['secret_message']} 🎁" if is_allowed else "⚠️ این نجوا برای تو نیست! 😕"
-            answer_callback_query(callback_id, response_text, is_allowed)
+            response_text = f"🔐 پیام نجوا: {whisper_data['secret_message']}" if is_allowed else "⚠️ این نجوا برای تو نیست! 😕"
+            logger.info("Sending callback response: %s", response_text)
+            answer_callback_query(callback_id, response_text, show_alert=True)
