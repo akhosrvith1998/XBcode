@@ -41,7 +41,7 @@ def webhook():
         return Response(status=500)
 
 if __name__ == "__main__":
-    webhook_url = os.getenv("WEBHOOK_URL", "https://xbcode-render-app.onrender.com/webhook")
+    webhook_url = "https://xbcode.onrender.com/webhook"
     try:
         response = requests.get(f"{URL}setWebhook?url={webhook_url}")
         logger.info("Webhook set response: %s", response.json())
