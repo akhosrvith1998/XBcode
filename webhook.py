@@ -1,12 +1,13 @@
 from flask import Flask, request, Response
 import requests
 import os
+import threading
 from main import process_update
 from reply_whisper import process_reply_whisper
 from logger import logger
 
 app = Flask(__name__)
-TOKEN = "7844345303:AAGyDzl4oJjm646ePdx0YQP32ARuhWL6qHk"
+TOKEN = os.getenv("BOT_TOKEN", "7844345303:AAGyDzl4oJjm646ePdx0YQP32ARuhWL6qHk")
 URL = f"https://api.telegram.org/bot{TOKEN}/"
 
 @app.route("/")
@@ -19,9 +20,21 @@ def webhook():
         update = request.get_json()
         logger.info("Received update: %s", update)
         if "inline_query" in update:
-            threading.Thread(target=process_update, args=(update,)).start()
+            def run_process_update():
+                try:
+                    logger.info("Starting process_update for inline query")
+                    process_update(update)
+                except Exception as e:
+                    logger.error("Error in process_update: %s", str(e))
+            threading.Thread(target=run_process_update).start()
         elif "message" in update and "reply_to_message" in update["message"]:
-            threading.Thread(target=process_reply_whisper, args=(update,)).start()
+            def run_process_reply_whisper():
+                try:
+                    logger.info("Starting process_reply_whisper")
+                    process_reply_whisper(update)
+                except Exception as e:
+                    logger.error("Error in process_reply_whisper: %s", str(e))
+            threading.Thread(target=run_process_reply_whisper).start()
         return Response(status=200)
     except Exception as e:
         logger.error("Webhook error: %s", str(e))
@@ -29,6 +42,11 @@ def webhook():
 
 if __name__ == "__main__":
     webhook_url = os.getenv("WEBHOOK_URL", "https://xbcode-render-app.onrender.com/webhook")
-    response = requests.get(f"{URL}setWebhook?url={webhook_url}")
-    logger.info("Webhook set: %s", response.text)
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+    try:
+        response = requests.get(f"{URL}setWebhook?url={webhook_url}")
+        logger.info("Webhook set response: %s", response.json())
+        if not response.json().get("ok"):
+            logger.error("Failed to set webhook: %s", response.json())
+    except Exception as e:
+        logger.error("Error setting webhook: %s", str(e))
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
